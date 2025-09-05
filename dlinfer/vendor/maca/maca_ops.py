@@ -13,6 +13,8 @@ from dlinfer.utils.type_annotation import Tensor, Optional, Sequence, Tuple
 from .fused_moe import fused_experts
 from .maca_extension import ops as maca_ext_ops
 
+from vllm import _custom_ops as custom_ops
+
 __all__ = [
     "add_rms_norm",
     "apply_rotary_pos_emb",
@@ -25,6 +27,10 @@ __all__ = [
     "silu_and_mul",
     "moe_gating_topk_softmax",
     "linear",
+    "dynamic_quant",
+    "linear_w8a8",
+    "rms_norm_w8a8",
+    "add_rms_norm_w8a8",
 ]
 
 
@@ -422,7 +428,7 @@ def linear(
     all_reduce: Optional[bool],
     group: Optional[str],
 ) -> Tensor:
-    if os.getenv("DLINER_LINEAR_USE_NN_LAYOUT", "0") == "1":
+    if os.getenv("DLINFER_LINEAR_USE_NN_LAYOUT", "0") == "1":
         out = torch.matmul(x, weight)
         if bias is not None:
             out += bias
@@ -433,3 +439,68 @@ def linear(
     return out
 
 
+
+@register_ops(vendor_ops_registry)
+def dynamic_quant(
+    x: Tensor, quant_dtype: torch.dtype, quant_granularity: str = "PER_TOKEN"
+):
+    assert quant_dtype == torch.int8
+    assert quant_granularity == "PER_TOKEN"
+    x, input_scale, _ = custom_ops.scaled_int8_quant(x, None)
+    return x, input_scale
+
+
+@register_ops(vendor_ops_registry)
+def linear_w8a8(
+    a: Tensor,
+    b: Tensor,
+    rms_scale: float,
+    linear_scale: float,
+    out_dtype: torch.dtype,
+    quant_dtype: torch.dtype = torch.int8,
+    bias: Tensor = None,
+):
+    assert quant_dtype == torch.int8
+    assert os.getenv('DLINFER_LINEAR_USE_NN_LAYOUT', '0') == '0',  ("Only support w8a8 on TN layout")
+    
+    bs, seq_len, head_size = a.size()
+
+    out = custom_ops.cutlass_scaled_mm(
+        a.view(-1, head_size),
+        b.t(),
+        scale_a=rms_scale,
+        scale_b=linear_scale.data.t().contiguous(),
+        out_dtype=out_dtype,
+        bias=bias,
+    )
+
+    out = out.view(bs, seq_len, -1)
+    return out
+
+
+@register_ops(vendor_ops_registry)
+def rms_norm_w8a8(
+    hidden_states: Tensor,
+    weight: Tensor,
+    epsilon: float,
+    quant_dtype: torch.dtype = torch.int8,
+):
+    assert quant_dtype == torch.int8
+    x = torch.empty_like(hidden_states)
+    maca_ext_ops.rms_norm(x, hidden_states, weight, epsilon)
+    x, input_scale, _ = custom_ops.scaled_int8_quant(x, None)
+    return x, input_scale
+
+
+@register_ops(vendor_ops_registry)
+def add_rms_norm_w8a8(
+    hidden_states: Tensor,
+    residual: Tensor,
+    weight: Tensor,
+    epsilon: float,
+    quant_dtype: torch.dtype = torch.int8,
+):
+    assert quant_dtype == torch.int8
+    maca_ext_ops.fused_add_rms_norm(hidden_states, residual, weight, epsilon)
+    x, input_scale, _ = custom_ops.scaled_int8_quant(hidden_states, None)
+    return x, input_scale, residual
