@@ -92,4 +92,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             "float epsilon) -> ()");
 
 
+    // Compute int8 quantized tensor for given scaling factor.
+    ops.def("static_scaled_int8_quant",
+            &static_scaled_int8_quant,
+            "static_scaled_int8_quant(Tensor! result, Tensor input, Tensor scale,"
+            "Tensor? azp) -> ()");
+
+
+    ops.def("dynamic_scaled_int8_quant",
+            &dynamic_scaled_int8_quant,
+           "dynamic_scaled_int8_quant(Tensor! result, Tensor input, Tensor! scale, "
+           "Tensor!? azp) -> ()");
 }

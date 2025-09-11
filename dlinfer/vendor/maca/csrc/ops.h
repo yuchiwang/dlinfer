@@ -55,3 +55,11 @@ void gelu_quick(torch::Tensor& out, torch::Tensor& input);
 
 void advance_step(int64_t num_seqs, int64_t num_queries, int64_t block_size, torch::Tensor& input_tokens, torch::Tensor& sampled_token_ids,
                   torch::Tensor& input_positions, torch::Tensor& seq_lens, torch::Tensor& slot_mapping, torch::Tensor& block_tables);
+
+void static_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
+                              torch::Tensor const& scale,
+                              c10::optional<torch::Tensor> const& azp);
+
+void dynamic_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
+                               torch::Tensor& scales,
+                               c10::optional<torch::Tensor> const& azp);

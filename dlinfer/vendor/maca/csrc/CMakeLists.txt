@@ -24,6 +24,7 @@ set(DLINFER_VLLM_SRC
   "layernorm_kernels.cu"
   "moe/moe_align_sum_kernels.cu"
   "moe/topk_softmax_kernels.cu"
+  "quantization/compressed_tensors/int8_quant_kernels.cu"
 )
 
 Python_add_library(

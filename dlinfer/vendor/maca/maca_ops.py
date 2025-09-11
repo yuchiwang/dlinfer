@@ -11,6 +11,7 @@ from dlinfer.utils.registry import register_ops
 from dlinfer.utils.type_annotation import Tensor, Optional, Sequence, Tuple
 
 from .fused_moe import fused_experts
+from .custom_ops import scaled_int8_quant
 from .maca_extension import ops as maca_ext_ops
 
 from vllm import _custom_ops as custom_ops
@@ -446,9 +447,8 @@ def dynamic_quant(
 ):
     assert quant_dtype == torch.int8
     assert quant_granularity == "PER_TOKEN"
-    x, input_scale, _ = custom_ops.scaled_int8_quant(x, None)
+    x, input_scale, _ = scaled_int8_quant(x, None)
     return x, input_scale
-
 
 @register_ops(vendor_ops_registry)
 def linear_w8a8(
@@ -462,6 +462,7 @@ def linear_w8a8(
 ):
     assert quant_dtype == torch.int8
     assert os.getenv('DLINFER_LINEAR_USE_NN_LAYOUT', '0') == '0',  ("Only support w8a8 on TN layout")
+
     bs, seq_len, head_size = a.size()
 
     out = custom_ops.cutlass_scaled_mm(
@@ -487,7 +488,7 @@ def rms_norm_w8a8(
     assert quant_dtype == torch.int8
     x = torch.empty_like(hidden_states)
     maca_ext_ops.rms_norm(x, hidden_states, weight, epsilon)
-    x, input_scale, _ = custom_ops.scaled_int8_quant(x, None)
+    x, input_scale, _ = scaled_int8_quant(x, None)
     return x, input_scale
 
 
@@ -501,5 +502,5 @@ def add_rms_norm_w8a8(
 ):
     assert quant_dtype == torch.int8
     maca_ext_ops.fused_add_rms_norm(hidden_states, residual, weight, epsilon)
-    x, input_scale, _ = custom_ops.scaled_int8_quant(hidden_states, None)
+    x, input_scale, _ = scaled_int8_quant(hidden_states, None)
     return x, input_scale, residual
